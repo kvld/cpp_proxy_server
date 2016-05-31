@@ -8,6 +8,7 @@
 
 #include "proxy_server.hpp"
 #include "client.hpp"
+#include "http.hpp"
 #include "server.hpp"
 
 #include <netdb.h>
@@ -101,47 +102,21 @@ void proxy_server::read_from_client(struct kevent& ev) {
     size_t readed_cnt = cur_client->read(ev.data);
     std::cout << "Readed data from client, fd = " << ev.ident << ", size = " << readed_cnt << std::endl;
     
-    size_t pos = cur_client->get_buffer().find_first_of("\n");
-    std::string request = cur_client->get_buffer().substr(0, pos);
-    size_t first_space = request.find(" ");
-    std::string url = request.substr(first_space + 1, request.find(" ", first_space + 1) - first_space - 1);
-    
-    if (url == "") {
-        return;
-    }
-    
-    struct addrinfo hints, *res;
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    
-    std::cout << url << std::endl;
-    std::string protocol = url.substr(0, url.find(":"));
-    url.erase(0, url.find("/") + 2);
-    if (url.find("/") != std::string::npos) {
-        url.erase(url.find_first_of("/"));
-    }
-    if (url.find(":") != std::string::npos) {
-        url.erase(url.find_first_of(":"));
-    }
-    std::cout << url << std::endl;
-    getaddrinfo(url.c_str(), protocol.c_str(), &hints, &res);
-    
-    if (res == NULL) {
-        return;
-    }
-    struct sockaddr_in result = *(struct sockaddr_in *)res->ai_addr;
+    std::cerr << cur_client->get_buffer() << std::endl;
+    class request cur_request(cur_client->get_buffer());
+    cur_request.resolve_host();
     
     struct server* server;
     
     try {
-        server = new class server(*res->ai_addr);
+        struct sockaddr result = std::move(cur_request.resolve_host());
+        server = new class server(result);
     } catch (...) {
         // exception
     }
     
     servers[server->get_fd()] = server;
-    server->set_host(url);
+    server->set_host(cur_request.get_host());
     cur_client->bind(server);
     
     queue.add_event([this](struct kevent& kev) { this->write_to_server(kev); }, server->get_fd(), EVFILT_WRITE, EV_ADD, 0, NULL);
@@ -184,6 +159,7 @@ void proxy_server::read_header_from_server(struct kevent& ev) {
     class server* cur_server = servers[ev.ident];
     
     std::string data = cur_server->read(ev.data);
+    std::cerr << data << std::endl;
     
     cur_server->flush_server_buffer();
     

@@ -12,7 +12,7 @@
 server::server(struct sockaddr addr) : socket(socket::create_server_socket()) {
     if (connect(this->socket.get_fd(), &addr, sizeof(addr)) == -1) {
         if (errno != EINPROGRESS) {
-            std::cerr << "Error occurred." << std::endl;
+            perror("Error while connecting to server occurred");
         }
     }
 }
