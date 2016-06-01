@@ -49,6 +49,9 @@ size_t server::write() {
     try {
         size_t writed_cnt = this->socket.write(this->buffer);
         this->buffer.erase(0, writed_cnt);
+        if (this->client) {
+            this->flush_client_buffer();
+        }
         return writed_cnt;
     } catch (...) {
         return 0;

@@ -8,6 +8,7 @@
 
 #include "client.hpp"
 #include "socket.hpp"
+#include "exceptions.hpp"
 #include <cassert>
 
 client::client(int fd) : socket(socket::accept(fd)), server(nullptr) { };
@@ -50,6 +51,9 @@ size_t client::write() {
     try {
         size_t writed_cnt = this->socket.write(this->buffer);
         buffer.erase(0, writed_cnt);
+        if (this->server) {
+            this->flush_server_buffer();
+        }
         return writed_cnt;
     } catch (...) {
         return 0;
@@ -67,7 +71,7 @@ void client::unbind() {
 
 void client::flush_client_buffer() {
     if (!this->server) {
-        // exception
+        throw server_exception("No attached server!");
     }
     this->server->append(this->buffer);
     this->buffer.clear();

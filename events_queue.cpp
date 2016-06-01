@@ -8,15 +8,17 @@
 
 #include "events_queue.hpp"
 #include "file_descriptor.hpp"
+#include "exceptions.hpp"
 
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/time.h>
+#include <iostream>
 
 events_queue::events_queue() {
     int kq = kqueue();
     if (kq == -1) {
-        // exception;
+        throw server_exception("Error while creating kqueue!");
     }
     
     this->kq.set_fd(kq);
@@ -26,7 +28,7 @@ events_queue::~events_queue() {}
 
 void events_queue::add_event(const struct kevent& ev) {
     if (kevent(this->kq.get_fd(), &ev, 1, NULL, 0, NULL)) {
-        throw NULL;
+        throw server_exception("Error in kqueue occurred!");
     }
 }
 

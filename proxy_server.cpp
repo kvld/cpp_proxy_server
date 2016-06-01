@@ -10,6 +10,7 @@
 #include "client.hpp"
 #include "http.hpp"
 #include "server.hpp"
+#include "exceptions.hpp"
 
 #include <netdb.h>
 #include <arpa/inet.h>
@@ -43,8 +44,7 @@ void proxy_server::run() {
                 queue.execute_events();
             }
         }
-    } catch(std::exception& e) {
-        std::cout << e.what() << std::endl;
+    } catch (...) {
         terminate();
     }
 }
@@ -95,14 +95,13 @@ void proxy_server::read_from_client(struct kevent& ev) {
     std::cout << "Read data from client, fd = " << ev.ident << std::endl;
     
     if (clients.find(ev.ident) == clients.end()) {
-        // exception
+        throw server_exception("Client not found!");
     }
     
     client* cur_client = clients[ev.ident].get();
     size_t readed_cnt = cur_client->read(ev.data);
     std::cout << "Readed data from client, fd = " << ev.ident << ", size = " << readed_cnt << std::endl;
     
-    std::cerr << cur_client->get_buffer() << std::endl;
     class request cur_request(cur_client->get_buffer());
     cur_request.resolve_host();
     
@@ -112,7 +111,7 @@ void proxy_server::read_from_client(struct kevent& ev) {
         struct sockaddr result = std::move(cur_request.resolve_host());
         server = new class server(result);
     } catch (...) {
-        // exception
+        throw server_exception("Error while creating to server!");
     }
     
     servers[server->get_fd()] = server;
@@ -159,7 +158,6 @@ void proxy_server::read_header_from_server(struct kevent& ev) {
     class server* cur_server = servers[ev.ident];
     
     std::string data = cur_server->read(ev.data);
-    std::cerr << data << std::endl;
     
     cur_server->flush_server_buffer();
     
