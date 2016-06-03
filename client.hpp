@@ -15,10 +15,14 @@
 #include "file_descriptor.hpp"
 #include "socket.hpp"
 #include "server.hpp"
+#include "http.hpp"
 
 class client {
 
 public:
+    
+    static const size_t BUFFER_SIZE = 4096;
+    
     client(const client&) = delete;
     client& operator=(client const&) = delete;
     
@@ -45,10 +49,13 @@ public:
     
     std::string get_host();
     
+    void set_response(class response* new_response);
+    class response* get_response();
 private:
     std::string buffer;
     class socket socket;
     std::unique_ptr<class server> server;
+    std::unique_ptr<class response> response;
 };
 
 #endif /* client_hpp */

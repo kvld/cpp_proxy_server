@@ -26,7 +26,7 @@ public:
     
     ~socket();
     
-    ptrdiff_t write(std::string const& msg);
+    size_t write(std::string const& msg);
     std::string read(size_t buffer_size);
     
     void make_nonblocking();

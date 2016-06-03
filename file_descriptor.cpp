@@ -7,6 +7,7 @@
 //
 
 #include "file_descriptor.hpp"
+#include <iostream>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -15,7 +16,6 @@ file_descriptor::file_descriptor() : fd(-1) {}
 file_descriptor::file_descriptor(file_descriptor&& rhs) : fd(rhs.fd) {
     rhs.fd = -1;
 }
-
 
 file_descriptor::file_descriptor(int fd) : fd(fd) {}
 
@@ -26,6 +26,8 @@ file_descriptor::~file_descriptor() {
     
     if (close(fd) == -1) {
         fprintf(stderr, "Error while closing file descriptor!\n");
+    } else {
+        std::cout << "Descriptor closed, fd = " << fd << std::endl;
     }
 }
 

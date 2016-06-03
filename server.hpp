@@ -19,6 +19,9 @@
 class server {
 
 public:
+    
+    static const size_t BUFFER_SIZE = 4096;
+    
     server(const server&) = delete;
     server& operator=(const server&) = delete;
     

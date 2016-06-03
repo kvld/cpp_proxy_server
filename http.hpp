@@ -22,13 +22,26 @@ public:
     std::string get_host();
     std::string get_port();
     sockaddr resolve_host();
-    
+    bool is_ended();
 private:
     std::string buffer;
     std::string host;
     std::string port;
     sockaddr resolved_host;
     bool is_host_resolved;
+};
+
+class response {
+public:
+    response() = default;
+    response(std::string request);
+    ~response();
+    
+    void append(std::string&);
+    bool is_ended();
+    
+private:
+    std::string buffer;
 };
 
 #endif /* http_hpp */

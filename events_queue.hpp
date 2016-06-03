@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <functional>
 #include <map>
+#include <set>
 #include "file_descriptor.hpp"
 
 class events_queue {
@@ -30,6 +31,7 @@ public:
     void add_event(std::function<void(struct kevent&)> handler, uintptr_t ident, int16_t filter, uint16_t flags, uint32_t fflags, intptr_t data);
     
     void delete_event(uintptr_t ident, int16_t filter);
+    void invalidate_events(uintptr_t ident);
     
     int event_occurred();
     void execute_events();
@@ -56,6 +58,7 @@ private:
     std::map<id, std::function<void(struct kevent&)> > handlers;
     static const size_t EVENTS_LIST_SIZE = 256;
     struct kevent events[EVENTS_LIST_SIZE];
+    std::set<uintptr_t> invalid_events;
 };
 
 #endif /* events_queue_hpp */

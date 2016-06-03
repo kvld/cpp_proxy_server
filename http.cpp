@@ -7,10 +7,13 @@
 //
 
 #include "http.hpp"
+#include "exceptions.hpp"
 
 #include <iostream>
 #include <netdb.h>
 
+
+// Request
 request::request(std::string content) : buffer(content), is_host_resolved(false) { }
 
 request::~request() { }
@@ -52,7 +55,7 @@ sockaddr request::resolve_host() {
     }
     
     if (this->get_host() == "") {
-        // exception
+        throw server_exception("Invalid host!");
     }
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
@@ -64,9 +67,7 @@ sockaddr request::resolve_host() {
     int err_no = getaddrinfo(this->get_host().c_str(), this->get_port().c_str(), &hints, &res);
     
     if (err_no != 0) {
-        std::cerr << "Error while resolving!" << std::endl;
-        // exception
-        
+        throw server_exception("Error while resolving!");
     }
     
     this->resolved_host = *res->ai_addr;
@@ -75,4 +76,38 @@ sockaddr request::resolve_host() {
     
     is_host_resolved = true;
     return this->resolved_host;
+}
+
+bool request::is_ended() {
+    size_t body_delimeter = this->buffer.find("\r\n\r\n");
+    
+    if (body_delimeter == std::string::npos) {
+        return false;
+    }
+    if (this->buffer.substr(0, 4) != "POST") {
+        return true;
+    }
+    
+    size_t content_length_pos = this->buffer.find("Content-Length: ") + 16;
+    size_t content_length = 0;
+    while (this->buffer[content_length_pos] != '\r') {
+        content_length *= 10;
+        content_length += (this->buffer[content_length_pos] - '0');
+        content_length_pos++;
+    }
+    
+    return this->buffer.substr(body_delimeter + 4).length() == content_length;
+}
+
+// Response
+response::response(std::string content) : buffer(content) { }
+
+response::~response() { };
+
+void response::append(std::string& content) {
+    this->buffer.append(content);
+}
+
+bool response::is_ended() {
+    return this->buffer.find("\r\n\r\n") != std::string::npos;
 }

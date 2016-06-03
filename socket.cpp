@@ -9,6 +9,7 @@
 #include "socket.hpp"
 #include "exceptions.hpp"
 
+#include <iostream>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -30,8 +31,8 @@ class socket socket::accept(int fd) {
     return socket(lfd);
 }
 
-ptrdiff_t socket::write(std::string const& msg) {
-    ptrdiff_t len;
+size_t socket::write(std::string const& msg) {
+    size_t len;
     if ((len = send(this->get_fd(), msg.c_str(), msg.size(), 0)) == -1) {
         throw server_exception("Error while writing!");
     }
@@ -41,13 +42,13 @@ ptrdiff_t socket::write(std::string const& msg) {
 
 std::string socket::read(size_t buffer_size) {
     std::vector<char> buffer(buffer_size);
-    ptrdiff_t len;
+    size_t len;
     
     if ((len = recv(this->get_fd(), buffer.data(), buffer_size, 0)) == -1) {
         throw server_exception("Error while reading!");
     }
     
-    return std::string(buffer.cbegin(), buffer.cend() + len);
+    return std::string(buffer.begin(), buffer.end());
 }
 
 void socket::make_nonblocking() {

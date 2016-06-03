@@ -22,6 +22,7 @@ int client::get_fd() {
 }
 
 int client::get_server_fd() {
+    assert(this->server);
     return this->server->get_fd();
 }
 
@@ -37,11 +38,16 @@ size_t client::get_buffer_size() {
     return this->buffer.size();
 }
 
+std::string client::get_host() {
+    assert(this->server);
+    return this->server->get_host();
+}
+
 size_t client::read(size_t buffer_size) {
     try {
-        std::string readed = this->socket.read(buffer_size);
-        this->buffer.append(readed);
-        return readed.size();
+        std::string reads = this->socket.read(buffer_size);
+        this->buffer.append(reads);
+        return reads.length();
     } catch (...) {
         return 0;
     }
@@ -49,12 +55,12 @@ size_t client::read(size_t buffer_size) {
 
 size_t client::write() {
     try {
-        size_t writed_cnt = this->socket.write(this->buffer);
-        buffer.erase(0, writed_cnt);
+        size_t written_cnt = this->socket.write(this->buffer);
+        this->buffer.erase(0, written_cnt);
         if (this->server) {
             this->flush_server_buffer();
         }
-        return writed_cnt;
+        return written_cnt;
     } catch (...) {
         return 0;
     }
@@ -66,17 +72,26 @@ void client::bind(class server *new_server) {
 }
 
 void client::unbind() {
-    
+    this->server.reset(nullptr);
 }
 
 void client::flush_client_buffer() {
-    if (!this->server) {
-        throw server_exception("No attached server!");
-    }
+    assert(this->server);
     this->server->append(this->buffer);
     this->buffer.clear();
 }
 
 void client::flush_server_buffer() {
-    this->server->flush_server_buffer();
+    assert(this->server);
+    if (this->get_buffer_size() < client::BUFFER_SIZE) {
+        this->server->flush_server_buffer();
+    }
+}
+
+void client::set_response(class response *rsp) {
+    this->response.reset(rsp);
+}
+
+class response* client::get_response() {
+    return this->response.get();
 }
