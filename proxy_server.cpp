@@ -100,11 +100,12 @@ void proxy_server::read_from_client(struct kevent& ev) {
     size_t read_cnt = cur_client->read(ev.data);
     fprintf(stdout, "Read data from client, fd = %lu, ev_size = %ld, size = %zu\n", ev.ident, ev.data, read_cnt);
 
-    class http_request cur_request(cur_client->get_buffer());
+    class http_request cur_request(std::move(cur_client->get_buffer()));
     
     if (cur_request.is_ended()) {
         fprintf(stdout, "Request for host [%s]\n", cur_request.get_host().c_str());
 
+        cur_client->get_buffer() = std::move(cur_request.get_data());
         class http_response* response = new class http_response();
         cur_client->set_response(response);
         

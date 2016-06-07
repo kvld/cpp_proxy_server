@@ -144,10 +144,10 @@ std::string http_request::get_start_line() {
 std::string http_request::get_relative_URI() {
     std::string relative_URI = URI;
     if (relative_URI.substr(0, 7) == "http://") {
-        relative_URI = relative_URI.substr(8);
+        relative_URI = relative_URI.substr(7);
     }
     if (relative_URI.substr(0, get_host().length()) == get_host()) {
-        relative_URI = relative_URI.substr(get_host().length() + 1);
+        relative_URI = relative_URI.substr(get_host().length());
     }
     
     return relative_URI;
