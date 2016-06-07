@@ -157,19 +157,19 @@ void proxy_server::write_to_server(struct kevent& ev) {
     
     cur_server->write();
     if (cur_server->get_buffer_size() == 0) {
-        queue.add_event([this](struct kevent& kev) { this->read_header_from_server(kev); }, ev.ident, EVFILT_READ, EV_ADD, 0, NULL);
+        queue.add_event([this](struct kevent& kev) { this->read_from_server(kev); }, ev.ident, EVFILT_READ, EV_ADD, 0, NULL);
         queue.delete_event(ev.ident, ev.filter);
         queue.add_event([this](struct kevent& kev) { this->write_to_client(kev); }, cur_server->get_client_fd(), EVFILT_WRITE, EV_ADD, 0, NULL);
     }
 }
 
-void proxy_server::read_header_from_server(struct kevent& ev) {
+void proxy_server::read_from_server(struct kevent& ev) {
     if (ev.flags & EV_EOF && ev.data == 0) {
         disconnect_server(ev);
         return;
     }
     
-    fprintf(stdout, "Reading headers from server, fd = %lu, size = %ld\n", ev.ident, ev.data);
+    fprintf(stdout, "Read data from server, fd = %lu, size = %ld\n", ev.ident, ev.data);
     
     class server* cur_server = servers[ev.ident];
     
@@ -182,29 +182,7 @@ void proxy_server::read_header_from_server(struct kevent& ev) {
         cur_server->flush_server_buffer();
         
         queue.add_event([this](struct kevent& kev) { this->write_to_client(kev); }, cur_server->get_client_fd(), EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, NULL);
-        queue.add_event([this](struct kevent& kev) { this->read_from_server(kev); }, ev.ident, EVFILT_READ, EV_ADD, 0, NULL);
     }
-}
-
-void proxy_server::read_from_server(struct kevent& ev) {
-    if (ev.flags & EV_EOF && ev.data == 0) {
-        disconnect_server(ev);
-        return;
-    }
-    
-    fprintf(stdout, "Reading from server, fd = %lu, size = %ld\n", ev.ident, ev.data);
-    
-    class server* cur_server = servers[ev.ident];
-    std::string data = cur_server->read(ev.data);
-    
-    if (data.length() > 0) {
-        class http_response* cur_response = clients[cur_server->get_client_fd()].get()->get_response();
-        cur_response->append(data);
-        
-        cur_server->flush_server_buffer();
-        queue.add_event(cur_server->get_client_fd(), EVFILT_WRITE, EV_ENABLE, 0, 0, NULL);
-    }
-    
 }
 
 void proxy_server::write_to_client(struct kevent& ev) {
