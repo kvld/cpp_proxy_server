@@ -100,13 +100,12 @@ void proxy_server::read_from_client(struct kevent& ev) {
     size_t read_cnt = cur_client->read(ev.data);
     fprintf(stdout, "Read data from client, fd = %lu, ev_size = %ld, size = %zu\n", ev.ident, ev.data, read_cnt);
 
-    class request cur_request(cur_client->get_buffer());
-    std::cout << cur_client->get_buffer() << std::endl;
+    class http_request cur_request(cur_client->get_buffer());
     
     if (cur_request.is_ended()) {
         fprintf(stdout, "Request for host [%s]\n", cur_request.get_host().c_str());
 
-        class response* response = new class response();
+        class http_response* response = new class http_response();
         cur_client->set_response(response);
         
         if (cur_client->has_server()) {
@@ -176,7 +175,7 @@ void proxy_server::read_header_from_server(struct kevent& ev) {
     
     std::string data = cur_server->read(ev.data);
     
-    class response* cur_response = clients[cur_server->get_client_fd()].get()->get_response();
+    class http_response* cur_response = clients[cur_server->get_client_fd()].get()->get_response();
     cur_response->append(data);
     
     if (cur_response->is_ended()) {
@@ -199,7 +198,7 @@ void proxy_server::read_from_server(struct kevent& ev) {
     std::string data = cur_server->read(ev.data);
     
     if (data.length() > 0) {
-        class response* cur_response = clients[cur_server->get_client_fd()].get()->get_response();
+        class http_response* cur_response = clients[cur_server->get_client_fd()].get()->get_response();
         cur_response->append(data);
         
         cur_server->flush_server_buffer();
@@ -228,7 +227,6 @@ void proxy_server::write_to_client(struct kevent& ev) {
 }
 
 void proxy_server::disconnect_client(struct kevent& ev) {
-    std::cout << "Disconnect client, fd = " << ev.ident << std::endl;
     fprintf(stdout, "Disconnect client, fd = %lu\n", ev.ident);
     
     class client* client = clients[ev.ident].get();

@@ -88,10 +88,10 @@ void client::flush_server_buffer() {
     }
 }
 
-void client::set_response(class response *rsp) {
+void client::set_response(class http_response *rsp) {
     this->response.reset(rsp);
 }
 
-class response* client::get_response() {
+class http_response* client::get_response() {
     return this->response.get();
 }

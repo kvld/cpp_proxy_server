@@ -1,4 +1,4 @@
-    //
+//
 //  http.cpp
 //  proxy
 //
@@ -12,49 +12,176 @@
 #include <iostream>
 #include <netdb.h>
 
+// http_protocol
+http_protocol::http_protocol() : state(EMPTY) { }
 
-// Request
-request::request(std::string content) : buffer(content), is_host_resolved(false) { }
-
-request::~request() { }
-
-std::string request::append(std::string content) {
-    this->buffer.append(content);
-    return this->buffer;
+http_protocol::http_protocol(std::string content) : state(EMPTY) {
+    data = content;
 }
 
-std::string request::get_port() {
-    if (this->port.empty()) {
-        this->get_host();
-    }
-    
-    return this->port;
+void http_protocol::set_header(std::string key, std::string val) {
+    headers[key] = val;
 }
 
-std::string request::get_host() {
-    if (this->host.empty()) {
-        size_t pos_host = this->buffer.find("Host:");
-        if (pos_host == std::string::npos) {
-            this->host = "";
-            this->port = "";
+std::string http_protocol::get_header(std::string header) {
+    return headers.find(header) != headers.end() ? headers[header] : "";
+}
+
+void http_protocol::parse_data() {
+    auto start_line_end = data.begin();
+    if (state == EMPTY && data.find("\r\n") != std::string::npos) {
+        auto first_space = std::find_if(data.begin(), data.end(), [](char a) { return a == ' '; });
+        auto second_space = std::find_if(first_space + 1, data.end(), [](char a) { return a == ' '; });
+        start_line_end = std::find_if(second_space + 1, data.end(), [](char a) { return a == '\r'; });
+        
+        if (first_space == data.end() || second_space == data.end() || start_line_end == data.end()) {
+            state = BAD;
         } else {
-            // "Host: hostname.com:80\r\n" -> "hostname.com:80"
-            this->host = this->buffer.substr(pos_host + 6, this->buffer.find("\r\n", pos_host) - pos_host - 6);
-            // "hostname.com:80" -> "hostname.com"
-            this->port = (this->host.find(":") == std::string::npos) ? "80" : this->host.substr(this->host.find(":") + 1);
-            this->host = (this->host.find(":") == std::string::npos) ? this->host : this->host.substr(0, this->host.find(":"));
+            parse_start_line({data.begin(), start_line_end});
         }
     }
     
-    return this->host;
-}
-
-sockaddr request::resolve_host() {
-    if (is_host_resolved) {
-        return this->resolved_host;
+    size_t start_line_end_pos = std::distance(data.begin(), start_line_end);
+    size_t _body_begin_pos = data.find("\r\n\r\n", start_line_end_pos);
+    if (state == START_LINE && _body_begin_pos != std::string::npos) {
+        std::string text_headers = data.substr(start_line_end_pos + 2, _body_begin_pos - start_line_end_pos);
+        parse_headers(text_headers);
     }
     
-    if (this->get_host() == "") {
+    if (state == HEADERS || state == PARTIAL) {
+        body_begin_pos = _body_begin_pos + 4;
+        check_body();
+    }
+}
+
+void http_protocol::parse_headers(std::string text_headers) {
+    if (text_headers == "") {
+        state = BAD;
+    } else {
+        auto headers_end = text_headers.begin();
+        
+        while (headers_end != text_headers.end() && *headers_end != '\r') {
+            auto space = std::find_if(headers_end, text_headers.end(), [](char a) { return a == ':'; });
+            auto crlf = std::find_if(space + 1, text_headers.end(), [](char a) { return a == '\r'; });
+            
+            headers.insert({{headers_end, space}, {space + 2, crlf}});
+            headers_end = crlf + 2;
+        };
+        state = HEADERS;
+    }
+}
+
+void http_protocol::check_body() {
+    if (get_header("Content-Length") != "") {
+        if (get_body().size() == static_cast<size_t>(std::stoi(get_header("Content-Length")))) {
+            state = FULL;
+        } else {
+            state = PARTIAL;
+        }
+    } else if (get_header("Transfer-Encoding") == "chunked") {
+        if (get_body().size() >= 5 && get_body().substr(get_body().size() - 5) == "0\r\n\r\n") {
+            state = FULL;
+        } else {
+            state = PARTIAL;
+        }
+    } else {
+        state = get_body().size() == 0 ? FULL : BAD;
+    }
+}
+
+bool http_protocol::is_ended() {
+    return state == FULL;
+}
+
+std::string http_protocol::get_data() {
+    return get_start_line() + "\r\n" + get_headers() + "\r\n\r\n" + get_body();
+}
+
+std::string http_protocol::get_headers() {
+    std::string headers_text = "";
+    for (auto header : headers) {
+        headers_text += header.first + ": " + header.second + "\r\n";
+    }
+    
+    return headers_text;
+}
+
+std::string http_protocol::get_body() {
+    return data.substr(body_begin_pos);
+}
+
+void http_protocol::append(std::string& content) {
+    data.append(content);
+    parse_data();
+}
+
+
+// http_request
+http_request::http_request(std::string data) : http_protocol(data) {
+    parse_data();
+}
+
+void http_request::parse_start_line(std::string start_line) {
+    auto first_space = std::find_if(start_line.begin(), start_line.end(), [](char a) { return a == ' '; });
+    auto second_space = std::find_if(first_space + 1, start_line.end(), [](char a) { return a == ' '; });
+    auto crlf = std::find_if(second_space + 1, start_line.end(), [](char a) { return a == '\r'; });
+    
+    method = {start_line.begin(), first_space};
+    URI = {first_space + 1, second_space};
+    protocol = {second_space + 1, crlf};
+    
+    bool is_valid_method = method == "GET" || method == "POST";
+    bool is_valid_URI = URI != "";
+    bool is_valid_protocol = protocol == "HTTP/1.0" || protocol == "HTTP/1.1";
+    
+    state = (!is_valid_method || !is_valid_URI || !is_valid_protocol) ? BAD : START_LINE;
+}
+
+std::string http_request::get_start_line() {
+    return method + " " + get_relative_URI() + " " + protocol;
+}
+
+std::string http_request::get_relative_URI() {
+    std::string relative_URI = URI;
+    if (relative_URI.substr(0, 7) == "http://") {
+        relative_URI = relative_URI.substr(8);
+    }
+    if (relative_URI.substr(0, get_host().length()) == get_host()) {
+        relative_URI = relative_URI.substr(get_host().length() + 1);
+    }
+    
+    return relative_URI;
+}
+
+std::string http_request::get_port() {
+    if (port.empty()) {
+        get_host();
+    }
+    return port;
+}
+
+std::string http_request::get_host() {
+    if (host == "") {
+        if (get_header("Host") == "" && get_header("host") == "") {
+            host = port = "";
+        } else {
+            host = get_header("Host") == "" ? get_header("host") : get_header("Host");
+            
+            // "hostname.com:80" -> "hostname.com"
+            port = (host.find(":") == std::string::npos) ? "80" : host.substr(host.find(":") + 1);
+            host = (host.find(":") == std::string::npos) ? host : host.substr(0, host.find(":"));
+        }
+    }
+    
+    return host;
+}
+
+sockaddr http_request::resolve_host() {
+    if (is_host_resolved) {
+        return resolved_host;
+    }
+    
+    if (get_host() == "") {
         throw server_exception("Invalid host!");
     }
     struct addrinfo hints, *res;
@@ -64,50 +191,41 @@ sockaddr request::resolve_host() {
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
     
-    int err_no = getaddrinfo(this->get_host().c_str(), this->get_port().c_str(), &hints, &res);
+    int err_no = getaddrinfo(get_host().c_str(), get_port().c_str(), &hints, &res);
     
     if (err_no != 0) {
         throw server_exception("Error while resolving!");
     }
     
-    this->resolved_host = *res->ai_addr;
+    resolved_host = *res->ai_addr;
     
     freeaddrinfo(res);
     
     is_host_resolved = true;
-    return this->resolved_host;
+    return resolved_host;
 }
 
-bool request::is_ended() {
-    size_t body_delimeter = this->buffer.find("\r\n\r\n");
-    
-    if (body_delimeter == std::string::npos) {
-        return false;
-    }
-    if (this->buffer.substr(0, 4) != "POST") {
-        return true;
-    }
-    
-    size_t content_length_pos = this->buffer.find("Content-Length: ") + 16;
-    size_t content_length = 0;
-    while (this->buffer[content_length_pos] != '\r') {
-        content_length *= 10;
-        content_length += (this->buffer[content_length_pos] - '0');
-        content_length_pos++;
-    }
-    
-    return this->buffer.substr(body_delimeter + 4).length() == content_length;
+
+// http_response
+http_response::http_response() : http_protocol("") { }
+
+http_response::http_response(std::string data) : http_protocol(data) {
+    parse_data();
 }
 
-// Response
-response::response(std::string content) : buffer(content) { }
-
-response::~response() { };
-
-void response::append(std::string& content) {
-    this->buffer.append(content);
+std::string http_response::get_start_line() {
+    return protocol + " " + status;
 }
 
-bool response::is_ended() {
-    return this->buffer.find("\r\n\r\n") != std::string::npos;
+void http_response::parse_start_line(std::string start_line) {
+    auto first_space = std::find_if(start_line.begin(), start_line.end(), [](char a) { return a == ' '; });
+    auto second_space = std::find_if(first_space + 1, start_line.end(), [](char a) { return a == ' '; });
+    
+    protocol = {start_line.begin(), first_space};
+    status = {first_space + 1, second_space};
+    
+    bool is_valid_status = status >= "100" && status <= "999";
+    bool is_valid_protocol = protocol == "HTTP/1.0" || protocol == "HTTP/1.1";
+    
+    state = (!is_valid_status || !is_valid_protocol) ? BAD : START_LINE;
 }

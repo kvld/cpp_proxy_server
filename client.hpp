@@ -49,13 +49,13 @@ public:
     
     std::string get_host();
     
-    void set_response(class response* new_response);
-    class response* get_response();
+    void set_response(class http_response* new_response);
+    class http_response* get_response();
 private:
     std::string buffer;
     class socket socket;
     std::unique_ptr<class server> server;
-    std::unique_ptr<class response> response;
+    std::unique_ptr<class http_response> response;
 };
 
 #endif /* client_hpp */
