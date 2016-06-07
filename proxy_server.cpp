@@ -15,6 +15,7 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <iostream>
+#include <stdio.h>
 
 proxy_server::proxy_server(int port) :
     _is_working(false),
@@ -30,7 +31,7 @@ proxy_server::~proxy_server() {
 }
 
 void proxy_server::run() {
-    std::cout << "Server started." << std::endl;
+    fprintf(stdout, "Server started.\n");
     
     _is_working = true;
     
@@ -39,7 +40,7 @@ void proxy_server::run() {
             int amount = queue.event_occurred();
         
             if (amount == -1) {
-                std::cerr << "Error while working occurred!" << std::endl;
+                fprintf(stderr, "Error in events queue occurred!\n");
             } else {
                 queue.execute_events();
             }
@@ -50,19 +51,18 @@ void proxy_server::run() {
 }
 
 void proxy_server::start() {
-    std::cout << "Server started." << std::endl;
-    
+    fprintf(stdout, "Server started.\n");
     _is_working = true;
 }
 
 void proxy_server::stop() {
-    std::cout << "Server stopped." << std::endl;
+    fprintf(stdout, "Server stopped.\n");
     
     _is_stopped = true;
 }
 
 void proxy_server::terminate() {
-    std::cout << "Server terminated." << std::endl;
+    fprintf(stdout, "Server terminated.\n");
     
     _is_working = false;
 }
@@ -77,11 +77,10 @@ bool proxy_server::is_stopped() {
 
 // Events
 void proxy_server::connect_client(struct kevent& ev) {
-    std::cout << "New client connected." << std::endl;
     client* new_client = new client(main_socket.get_fd());
     clients[new_client->get_fd()] = std::move(std::unique_ptr<client>(new_client));
-    std::cout << "New client accepted, fd = " << new_client->get_fd() << std::endl;
-    
+    fprintf(stdout, "New client accepted, fd = %d\n", new_client->get_fd());
+
     queue.add_event([this](struct kevent& ev) { this->read_from_client(ev); }, new_client->get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
     queue.add_event([this](struct kevent& ev) { this->disconnect_client(ev); }, new_client->get_fd(), EVFILT_TIMER, EV_ADD, NOTE_SECONDS, 600);
 }
@@ -99,13 +98,14 @@ void proxy_server::read_from_client(struct kevent& ev) {
     client* cur_client = clients[ev.ident].get();
     
     size_t read_cnt = cur_client->read(ev.data);
-    std::cout << "Read data from client, fd = " << ev.ident << ", ev_size = " << ev.data << ", size = " << read_cnt << std::endl;
-    
+    fprintf(stdout, "Read data from client, fd = %lu, ev_size = %ld, size = %zu\n", ev.ident, ev.data, read_cnt);
+
     class request cur_request(cur_client->get_buffer());
+    std::cout << cur_client->get_buffer() << std::endl;
     
     if (cur_request.is_ended()) {
-        std::cout << "Request for host [" << cur_request.get_host() << "]" << std::endl;
-        
+        fprintf(stdout, "Request for host [%s]\n", cur_request.get_host().c_str());
+
         class response* response = new class response();
         cur_client->set_response(response);
         
@@ -131,7 +131,7 @@ void proxy_server::read_from_client(struct kevent& ev) {
         servers[server->get_fd()] = server;
         server->set_host(cur_request.get_host());
         cur_client->bind(server);
-        std::cout << "Server with fd = " << server->get_fd() << " binded to client with fd = " << cur_client->get_fd() << std::endl;
+        fprintf(stdout, "Server with fd = %d binded to client with fd = %d\n", server->get_fd(), cur_client->get_fd());
         
         queue.add_event([this](struct kevent& kev) { this->write_to_server(kev); }, server->get_fd(), EVFILT_WRITE, EV_ADD, 0, NULL);
         cur_client->flush_client_buffer();
@@ -145,14 +145,13 @@ void proxy_server::write_to_server(struct kevent& ev) {
         return;
     }
 
-    std::cout << "Writing data to server, fd = " << ev.ident << std::endl;
+    fprintf(stdout, "Writing data to server, fd = %lu\n", ev.ident);
     class server* cur_server = servers[ev.ident];
     
     int error;
     socklen_t length = sizeof(error);
     if (getsockopt(static_cast<int>(ev.ident), SOL_SOCKET, SO_ERROR, &error, &length) == -1 || error != 0) {
-        std::cerr << "Need disconnect" << std::endl;
-        perror("Error while connecting to server");
+        perror("Error while connecting to server. Disconnecting...");
         disconnect_server(ev);
         return;
     }
@@ -171,7 +170,7 @@ void proxy_server::read_header_from_server(struct kevent& ev) {
         return;
     }
     
-    std::cout << "Reading headers from server, fd = " << ev.ident << ", size = " << ev.data << std::endl;
+    fprintf(stdout, "Reading headers from server, fd = %lu, size = %ld\n", ev.ident, ev.data);
     
     class server* cur_server = servers[ev.ident];
     
@@ -194,7 +193,7 @@ void proxy_server::read_from_server(struct kevent& ev) {
         return;
     }
     
-    std::cout << "Reading from server, fd = " << ev.ident << ", size = " << ev.data << std::endl;
+    fprintf(stdout, "Reading from server, fd = %lu, size = %ld\n", ev.ident, ev.data);
     
     class server* cur_server = servers[ev.ident];
     std::string data = cur_server->read(ev.data);
@@ -215,7 +214,7 @@ void proxy_server::write_to_client(struct kevent& ev) {
         return;
     }
     
-    std::cout << "Writing data to client, fd = " << ev.ident << std::endl;
+    fprintf(stdout, "Writing data to client, fd = %lu\n", ev.ident);
     
     class client* cur_client = clients[ev.ident].get();
     
@@ -230,11 +229,12 @@ void proxy_server::write_to_client(struct kevent& ev) {
 
 void proxy_server::disconnect_client(struct kevent& ev) {
     std::cout << "Disconnect client, fd = " << ev.ident << std::endl;
+    fprintf(stdout, "Disconnect client, fd = %lu\n", ev.ident);
     
     class client* client = clients[ev.ident].get();
     
     if (client->has_server()) {
-        std::cout << "Disconnect server, fd = " << client->get_server_fd() << std::endl;
+        fprintf(stdout, "Disconnect server, fd = %d\n", client->get_server_fd());
         
         servers.erase(client->get_server_fd());
         
@@ -252,7 +252,7 @@ void proxy_server::disconnect_client(struct kevent& ev) {
 void proxy_server::disconnect_server(struct kevent& ev) {
     class server* server = servers[ev.ident];
     
-    std::cout << "Disconnect server, fd = " << ev.ident << ", host = " << server->get_host() << std::endl;
+    fprintf(stdout, "Disconnect server, fd = %lu, host = [%s]\n", ev.ident, server->get_host().c_str());
     
     queue.invalidate_events(server->get_fd());
     queue.delete_event(server->get_fd(), EVFILT_READ);

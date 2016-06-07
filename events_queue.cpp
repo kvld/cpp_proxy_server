@@ -40,7 +40,9 @@ void events_queue::add_event(uintptr_t ident, int16_t filter, uint16_t flags, ui
 }
 
 void events_queue::add_event(std::function<void (struct kevent &)> handler, uintptr_t ident, int16_t filter, uint16_t flags, uint32_t fflags, intptr_t data) {
-    //std::cout << "New event: " << ident << ' ' << filter << std::endl;
+#ifdef DEBUG_KQUEUE
+    fprintf(stdout, "New event: ident = %d, filter = %d\n", ident, filter);
+#endif
     this->handlers[id{ident, filter}] = handler;
     return add_event(ident, filter, flags, fflags, data, NULL);
 }
@@ -55,7 +57,7 @@ void events_queue::execute_events() {
         perror("Error while getting events count!");
     } else {
         this->invalid_events.clear();
-        /*
+#ifdef DEBUG_KQUEUE
         std::cout << "Events: ";
         for (int i = 0; i < cnt; i++) {
             if (this->invalid_events.count(this->events[i].ident) == 0) {
@@ -65,7 +67,7 @@ void events_queue::execute_events() {
             }
         }
         std::cout << std::endl;
-        */
+#endif
         for (int i = 0; i < cnt; i++) {
             if (this->invalid_events.count(this->events[i].ident) == 0) {
                 std::function<void(struct kevent&)> handler = this->handlers[id{events[i].ident, events[i].filter}];
