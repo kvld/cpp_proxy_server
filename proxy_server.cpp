@@ -21,6 +21,7 @@
 #include <fcntl.h>
 
 const int RESOLVER_THREADS_COUNT = 10;
+const int CLIENT_TIMEOUT = 600;
 
 proxy_server::proxy_server(int port) :
     _is_working(false),
@@ -104,7 +105,7 @@ void proxy_server::connect_client(struct kevent& ev) {
     fprintf(stdout, "New client accepted, fd = %d\n", new_client->get_fd());
 
     queue.add_event([this](struct kevent& ev) { this->read_from_client(ev); }, new_client->get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
-    queue.add_event([this](struct kevent& ev) { this->disconnect_client(ev); }, new_client->get_fd(), EVFILT_TIMER, EV_ADD, NOTE_SECONDS, 600);
+    queue.add_event([this](struct kevent& ev) { this->disconnect_client(ev); }, new_client->get_fd(), EVFILT_TIMER, EV_ADD, NOTE_SECONDS, CLIENT_TIMEOUT);
 }
 
 void proxy_server::read_from_client(struct kevent& ev) {
@@ -118,6 +119,8 @@ void proxy_server::read_from_client(struct kevent& ev) {
     }
     
     client* cur_client = clients[ev.ident].get();
+    
+    reset_timer(cur_client->get_fd());
     
     size_t read_cnt = cur_client->read(ev.data);
     fprintf(stdout, "Read data from client, fd = %lu, ev_size = %ld, size = %zu\n", ev.ident, ev.data, read_cnt);
@@ -164,6 +167,8 @@ void proxy_server::resolver_callback(struct kevent& ev) {
     
     client* cur_client = clients[cur_request->get_client_fd()].get();
     
+    reset_timer(cur_client->get_fd());
+    
     servers[server->get_fd()] = server;
     server->set_host(cur_request->get_host());
     cur_client->bind(server);
@@ -183,6 +188,8 @@ void proxy_server::write_to_server(struct kevent& ev) {
 
     fprintf(stdout, "Writing data to server, fd = %lu\n", ev.ident);
     class server* cur_server = servers[ev.ident];
+    
+    reset_timer(cur_server->get_client_fd());
     
     int error;
     socklen_t length = sizeof(error);
@@ -210,6 +217,8 @@ void proxy_server::read_from_server(struct kevent& ev) {
     
     class server* cur_server = servers[ev.ident];
     
+    reset_timer(cur_server->get_client_fd());
+    
     std::string data = cur_server->read(ev.data);
     
     class http_response* cur_response = clients[cur_server->get_client_fd()].get()->get_response();
@@ -232,6 +241,8 @@ void proxy_server::write_to_client(struct kevent& ev) {
     
     class client* cur_client = clients[ev.ident].get();
     
+    reset_timer(cur_client->get_fd());
+    
     cur_client->write();
     if (cur_client->has_server()) {
         cur_client->flush_server_buffer();
@@ -245,12 +256,6 @@ void proxy_server::disconnect_client(struct kevent& ev) {
     fprintf(stdout, "Disconnect client, fd = %lu\n", ev.ident);
     
     class client* client = clients[ev.ident].get();
-    
-    if (client == nullptr) {
-        std::cout << "Invalid client!!!" << std::endl;
-        return;
-    }
-    
     
     if (client->has_server()) {
         fprintf(stdout, "Disconnect server, fd = %d\n", client->get_server_fd());
@@ -279,6 +284,13 @@ void proxy_server::disconnect_server(struct kevent& ev) {
     queue.delete_event(server->get_fd(), EVFILT_WRITE);
     servers.erase(server->get_fd());
     
+    reset_timer(server->get_client_fd());
+    
     server->disconnect();
+}
+
+void proxy_server::reset_timer(int fd) {
+    queue.add_event(fd, EVFILT_TIMER, EV_DELETE, NOTE_SECONDS, CLIENT_TIMEOUT, NULL);
+    queue.add_event(fd, EVFILT_TIMER, EV_ADD, NOTE_SECONDS, CLIENT_TIMEOUT, NULL);
 }
 

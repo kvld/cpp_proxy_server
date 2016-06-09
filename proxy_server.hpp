@@ -46,6 +46,8 @@ public:
     void disconnect_server(struct kevent&);
     void resolver_callback(struct kevent&);
     
+    void reset_timer(int fd);
+    
 private:
     bool _is_working;
     bool _is_stopped;
