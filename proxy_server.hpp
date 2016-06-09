@@ -28,12 +28,7 @@ public:
     
     void run();
     void terminate();
-    
-    void start();
     void stop();
-    
-    bool is_working();
-    bool is_stopped();
     
     // events
     void connect_client(struct kevent&);
@@ -49,8 +44,7 @@ public:
     void reset_timer(int fd);
     
 private:
-    bool _is_working;
-    bool _is_stopped;
+    bool working;
     
     events_queue queue;
     class socket main_socket;

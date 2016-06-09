@@ -19,13 +19,13 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 
 const int RESOLVER_THREADS_COUNT = 10;
 const int CLIENT_TIMEOUT = 600;
 
 proxy_server::proxy_server(int port) :
-    _is_working(false),
-    _is_stopped(false),
+    working(false),
     queue(),
     main_socket(socket::create(port)),
     resolver(RESOLVER_THREADS_COUNT)
@@ -41,21 +41,28 @@ proxy_server::proxy_server(int port) :
     
     resolver.set_fd(std::move(resolver_fd));
     
+    // signals
+    queue.add_event([this](struct kevent& ev){ this->stop(); }, SIGINT, EVFILT_SIGNAL, EV_ADD, 0, NULL);
+    queue.add_event([this](struct kevent& ev){ this->terminate(); }, SIGTERM, EVFILT_SIGNAL, EV_ADD, 0, NULL);
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+    
     queue.add_event([this](struct kevent& ev) { this->connect_client(ev); }, main_socket.get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
     queue.add_event([this](struct kevent& ev) { this->resolver_callback(ev); }, pipe_fd.get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
 }
 
 proxy_server::~proxy_server() {
-    
+    resolver.stop();
+    fprintf(stdout, "Server stopped.\n");
 }
 
 void proxy_server::run() {
     fprintf(stdout, "Server started.\n");
     
-    _is_working = true;
+    working = true;
     
     try {
-        while (is_working()) {
+        while (working) {
             int amount = queue.event_occurred();
         
             if (amount == -1) {
@@ -69,29 +76,17 @@ void proxy_server::run() {
     }
 }
 
-void proxy_server::start() {
-    fprintf(stdout, "Server started.\n");
-    _is_working = true;
-}
-
 void proxy_server::stop() {
-    fprintf(stdout, "Server stopped.\n");
-    
-    _is_stopped = true;
+    fprintf(stdout, "Stopping server...\n");
+    queue.invalidate_events(main_socket.get_fd());
+    queue.delete_event(main_socket.get_fd(), EVFILT_READ);
+    working = false;
 }
 
 void proxy_server::terminate() {
     fprintf(stdout, "Server terminated.\n");
-    
-    _is_working = false;
-}
-
-bool proxy_server::is_working() {
-    return this->_is_working;
-}
-
-bool proxy_server::is_stopped() {
-    return this->_is_stopped;
+    resolver.stop();
+    working = false;
 }
 
 // Events
