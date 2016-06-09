@@ -10,6 +10,7 @@
 #define http_hpp
 
 #include <stdio.h>
+#include "client.hpp"
 #include <string>
 #include <netdb.h>
 #include <unordered_map>
@@ -56,17 +57,28 @@ public:
     
     std::string get_host();
     std::string get_port();
-    sockaddr resolve_host();
+    
+    sockaddr get_resolved_host();
+    void set_resolved_host(sockaddr rh);
     
     std::string get_relative_URI();
+    
+    int get_client_fd() {
+        return client_fd;
+    }
+    
+    void set_client_fd(int fd) {
+        client_fd = fd;
+    }
     
 private:
     void parse_start_line(std::string) override;
     std::string get_start_line() override;
 
-    std::string port, host, URI, method;
+    std::string port = "", host = "", URI, method;
     sockaddr resolved_host;
     bool is_host_resolved = false;
+    int client_fd;
 };
 
 class http_response : public http_protocol {

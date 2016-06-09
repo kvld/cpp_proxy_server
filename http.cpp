@@ -176,33 +176,16 @@ std::string http_request::get_host() {
     return host;
 }
 
-sockaddr http_request::resolve_host() {
-    if (is_host_resolved) {
-        return resolved_host;
+sockaddr http_request::get_resolved_host() {
+    if (!is_host_resolved) {
+        throw server_exception("Host didn't resolved!");
     }
-    
-    if (get_host() == "") {
-        throw server_exception("Invalid host!");
-    }
-    struct addrinfo hints, *res;
-    memset(&hints, 0, sizeof(hints));
-        
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    
-    int err_no = getaddrinfo(get_host().c_str(), get_port().c_str(), &hints, &res);
-    
-    if (err_no != 0) {
-        throw server_exception("Error while resolving!");
-    }
-    
-    resolved_host = *res->ai_addr;
-    
-    freeaddrinfo(res);
-    
-    is_host_resolved = true;
     return resolved_host;
+}
+
+void http_request::set_resolved_host(sockaddr rh) {
+    is_host_resolved = true;
+    resolved_host = rh;
 }
 
 

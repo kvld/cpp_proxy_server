@@ -14,7 +14,9 @@
 client::client(int fd) : socket(socket::accept(fd)), server(nullptr) { };
 
 client::~client() {
-
+    if (server) {
+        unbind();
+    }
 }
 
 int client::get_fd() {

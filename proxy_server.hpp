@@ -14,6 +14,7 @@
 #include "events_queue.hpp"
 #include "socket.hpp"
 #include "client.hpp"
+#include "DNS_resolver.hpp"
 
 class proxy_server {
 
@@ -43,7 +44,7 @@ public:
     void read_from_server(struct kevent&);
     void disconnect_client(struct kevent&);
     void disconnect_server(struct kevent&);
-
+    void resolver_callback(struct kevent&);
     
 private:
     bool _is_working;
@@ -53,6 +54,8 @@ private:
     class socket main_socket;
     std::map<uintptr_t, std::unique_ptr<client> > clients;
     std::map<uintptr_t, server* > servers;
+    DNS_resolver resolver;
+    int pipe_fd;
 };
 
 #endif /* proxy_server_hpp */

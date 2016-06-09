@@ -11,19 +11,41 @@
 #include "http.hpp"
 #include "server.hpp"
 #include "exceptions.hpp"
+#include "DNS_resolver.hpp"
 
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <iostream>
 #include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+const int RESOLVER_THREADS_COUNT = 10;
 
 proxy_server::proxy_server(int port) :
     _is_working(false),
     _is_stopped(false),
     queue(),
-    main_socket(socket::create(port))
+    main_socket(socket::create(port)),
+    resolver(RESOLVER_THREADS_COUNT)
 {
+    int fd[2];
+    pipe(fd);
+    
+    resolver.set_fd(fd[1]);
+    pipe_fd = fd[0];
+    
+    if (fcntl(fd[0], F_SETFL, O_NONBLOCK) == -1) {
+        throw server_exception("Error while making nonblocking!");
+    }
+    
+    if (fcntl(fd[1], F_SETFL, O_NONBLOCK) == -1) {
+        throw server_exception("Error while making nonblocking!");
+    }
+    
+    
     queue.add_event([this](struct kevent& ev) { this->connect_client(ev); }, main_socket.get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
+    queue.add_event([this](struct kevent& ev) { this->resolver_callback(ev); }, pipe_fd, EVFILT_READ, EV_ADD, 0, NULL);
 }
 
 proxy_server::~proxy_server() {
@@ -100,17 +122,17 @@ void proxy_server::read_from_client(struct kevent& ev) {
     size_t read_cnt = cur_client->read(ev.data);
     fprintf(stdout, "Read data from client, fd = %lu, ev_size = %ld, size = %zu\n", ev.ident, ev.data, read_cnt);
 
-    class http_request cur_request(std::move(cur_client->get_buffer()));
+    std::unique_ptr<http_request> cur_request(new http_request(cur_client->get_buffer()));
     
-    if (cur_request.is_ended()) {
-        fprintf(stdout, "Request for host [%s]\n", cur_request.get_host().c_str());
-
-        cur_client->get_buffer() = std::move(cur_request.get_data());
+    if (cur_request->is_ended()) {
+        fprintf(stdout, "Request for host [%s]\n", cur_request->get_host().c_str());
+        
         class http_response* response = new class http_response();
         cur_client->set_response(response);
         
         if (cur_client->has_server()) {
-            if (cur_client->get_host() == cur_request.get_host()) {
+            if (cur_client->get_host() == cur_request->get_host()) {
+                cur_client->get_buffer() = cur_request->get_data();
                 cur_client->flush_client_buffer();
                 queue.add_event([this](struct kevent& ev) { this->write_to_server(ev); }, cur_client->get_server_fd(), EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, NULL);
                 return;
@@ -119,24 +141,38 @@ void proxy_server::read_from_client(struct kevent& ev) {
             }
         }
         
-        class server* server;
-        
-        try {
-            struct sockaddr result = std::move(cur_request.resolve_host());
-            server = new class server(result);
-        } catch (...) {
-            throw server_exception("Error while connecting to server!");
-        }
-        
-        servers[server->get_fd()] = server;
-        server->set_host(cur_request.get_host());
-        cur_client->bind(server);
-        fprintf(stdout, "Server with fd = %d binded to client with fd = %d\n", server->get_fd(), cur_client->get_fd());
-        
-        queue.add_event([this](struct kevent& kev) { this->write_to_server(kev); }, server->get_fd(), EVFILT_WRITE, EV_ADD, 0, NULL);
-        cur_client->flush_client_buffer();
+        cur_request->set_client_fd(static_cast<int>(ev.ident));
+        resolver.add_task(std::move(cur_request));
+    }
+}
+
+void proxy_server::resolver_callback(struct kevent& ev) {
+    char tmp;
+    read(pipe_fd, &tmp, sizeof(tmp));
+    
+    std::unique_ptr<http_request> cur_request = resolver.get_task();
+    fprintf(stdout, "Resolver callback called for host [%s].\n", cur_request->get_host().c_str());
+    
+    class server* server;
+    
+    try {
+        struct sockaddr result = std::move(cur_request->get_resolved_host());
+        server = new class server(result);
+    } catch (...) {
+        throw server_exception("Error while connecting to server!");
     }
     
+    client* cur_client = clients[cur_request->get_client_fd()].get();
+    
+    servers[server->get_fd()] = server;
+    server->set_host(cur_request->get_host());
+    cur_client->bind(server);
+    fprintf(stdout, "Server with fd = %d binded to client with fd = %d\n", server->get_fd(), cur_client->get_fd());
+    
+    queue.add_event([this](struct kevent& kev) { this->write_to_server(kev); }, server->get_fd(), EVFILT_WRITE, EV_ADD, 0, NULL);
+    
+    cur_client->get_buffer() = std::move(cur_request->get_data());
+    cur_client->flush_client_buffer();
 }
 
 void proxy_server::write_to_server(struct kevent& ev) {
@@ -210,6 +246,12 @@ void proxy_server::disconnect_client(struct kevent& ev) {
     
     class client* client = clients[ev.ident].get();
     
+    if (client == nullptr) {
+        std::cout << "Invalid client!!!" << std::endl;
+        return;
+    }
+    
+    
     if (client->has_server()) {
         fprintf(stdout, "Disconnect server, fd = %d\n", client->get_server_fd());
         
@@ -222,6 +264,7 @@ void proxy_server::disconnect_client(struct kevent& ev) {
     queue.invalidate_events(client->get_fd());
     queue.delete_event(client->get_fd(), EVFILT_READ);
     queue.delete_event(client->get_fd(), EVFILT_WRITE);
+    queue.delete_event(client->get_fd(), EVFILT_TIMER);
     
     clients.erase(client->get_fd());
 }
