@@ -32,8 +32,8 @@ public:
     void add_task(std::unique_ptr<http_request>);
     std::unique_ptr<http_request> get_task();
     
-    void set_fd(int fd);
-    int get_fd();
+    void set_fd(file_descriptor fd);
+    file_descriptor& get_fd();
 private:
     bool working = false;
     std::mutex lk;
@@ -41,7 +41,7 @@ private:
     std::vector<std::thread> threads;
     lru_cache<std::string, sockaddr> cache;
     std::queue<std::unique_ptr<http_request> > tasks, resolved;
-    int resolver_fd;
+    file_descriptor resolver_fd;
     
 };
 

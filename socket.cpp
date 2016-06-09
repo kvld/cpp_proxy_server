@@ -51,12 +51,6 @@ std::string socket::read(size_t buffer_size) {
     return std::string(buffer.begin(), buffer.end());
 }
 
-void socket::make_nonblocking() {
-    if (fcntl(this->get_fd(), F_SETFL, O_NONBLOCK) == -1) {
-        throw server_exception("Error while making nonblocking!");
-    }
-}
-
 int socket::create(int port) {
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;

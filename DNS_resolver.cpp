@@ -49,11 +49,11 @@ void DNS_resolver::stop() {
     }
 }
 
-void DNS_resolver::set_fd(int fd) {
-    resolver_fd = fd;
+void DNS_resolver::set_fd(file_descriptor fd) {
+    resolver_fd = std::move(fd);
 }
 
-int DNS_resolver::get_fd() {
+file_descriptor& DNS_resolver::get_fd() {
     return resolver_fd;
 }
 
@@ -62,7 +62,6 @@ void DNS_resolver::add_task(std::unique_ptr<http_request> request) {
         throw server_exception("Resolver doesn't running!");
     }
     std::unique_lock<std::mutex> ul{lk};
-    std::cerr << "new task" << ' ' << request->get_host() << std::endl;
     tasks.push(std::move(request));
     condition.notify_one();
 }
@@ -77,7 +76,7 @@ std::unique_ptr<http_request> DNS_resolver::get_task() {
 void DNS_resolver::send() {
     std::unique_lock<std::mutex> ul{lk};
     char tmp = 'a';
-    size_t cnt = write(get_fd(), &tmp, sizeof(tmp));
+    size_t cnt = write(resolver_fd.get_fd(), &tmp, sizeof(tmp));
     if (cnt == -1) {
         ul.unlock();
         perror("Resolver: error while sending message to proxy server");

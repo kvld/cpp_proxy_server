@@ -28,6 +28,8 @@ public:
     void set_fd(int fd);
     int get_fd();
     
+    void make_nonblocking();
+    
 protected:
     int fd;
     

@@ -57,7 +57,7 @@ private:
     std::map<uintptr_t, std::unique_ptr<client> > clients;
     std::map<uintptr_t, server* > servers;
     DNS_resolver resolver;
-    int pipe_fd;
+    file_descriptor pipe_fd;
 };
 
 #endif /* proxy_server_hpp */

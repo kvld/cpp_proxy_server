@@ -33,20 +33,16 @@ proxy_server::proxy_server(int port) :
     int fd[2];
     pipe(fd);
     
-    resolver.set_fd(fd[1]);
-    pipe_fd = fd[0];
+    pipe_fd = std::move(file_descriptor(fd[0]));
+    file_descriptor resolver_fd = std::move(file_descriptor(fd[1]));
     
-    if (fcntl(fd[0], F_SETFL, O_NONBLOCK) == -1) {
-        throw server_exception("Error while making nonblocking!");
-    }
+    pipe_fd.make_nonblocking();
+    resolver_fd.make_nonblocking();
     
-    if (fcntl(fd[1], F_SETFL, O_NONBLOCK) == -1) {
-        throw server_exception("Error while making nonblocking!");
-    }
-    
+    resolver.set_fd(std::move(resolver_fd));
     
     queue.add_event([this](struct kevent& ev) { this->connect_client(ev); }, main_socket.get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
-    queue.add_event([this](struct kevent& ev) { this->resolver_callback(ev); }, pipe_fd, EVFILT_READ, EV_ADD, 0, NULL);
+    queue.add_event([this](struct kevent& ev) { this->resolver_callback(ev); }, pipe_fd.get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
 }
 
 proxy_server::~proxy_server() {
@@ -151,7 +147,9 @@ void proxy_server::read_from_client(struct kevent& ev) {
 
 void proxy_server::resolver_callback(struct kevent& ev) {
     char tmp;
-    read(pipe_fd, &tmp, sizeof(tmp));
+    if (read(pipe_fd.get_fd(), &tmp, sizeof(tmp)) == -1) {
+        perror("Reading from resolver failed");
+    }
     
     std::unique_ptr<http_request> cur_request = resolver.get_task();
     fprintf(stdout, "Resolver callback called for host [%s].\n", cur_request->get_host().c_str());

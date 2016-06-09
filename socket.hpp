@@ -29,8 +29,6 @@ public:
     size_t write(std::string const& msg);
     std::string read(size_t buffer_size);
     
-    void make_nonblocking();
-    
     static socket accept(int fd);
     static int create(int port);
     static socket create_server_socket();
