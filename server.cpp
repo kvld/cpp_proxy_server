@@ -20,12 +20,12 @@ server::server(struct sockaddr addr) : socket(socket::create_server_socket()) {
 }
 
 int server::get_fd() {
-    return this->socket.get_fd();
+    return socket.get_fd();
 }
 
 int server::get_client_fd() {
-    assert(this->client);
-    return this->client->get_fd();
+    assert(client);
+    return client->get_fd();
 }
 
 void server::set_host(const std::string& host) {
@@ -33,30 +33,30 @@ void server::set_host(const std::string& host) {
 }
 
 std::string server::get_host() {
-    return this->host;
+    return host;
 }
 
 void server::bind(class client* new_client) {
-    this->client = new_client;
+    client = new_client;
 }
 
 void server::append(std::string& data) {
-    this->buffer.append(data);
+    buffer.append(data);
 }
 
 std::string& server::get_buffer() {
-    return this->buffer;
+    return buffer;
 }
 
 size_t server::get_buffer_size() {
-    return this->buffer.size();
+    return buffer.size();
 }
 
 size_t server::write() {
     try {
-        size_t written_cnt = this->socket.write(this->buffer);
-        this->buffer.erase(0, written_cnt);
-        if (this->client) {
+        size_t written_cnt = socket.write(buffer);
+        buffer.erase(0, written_cnt);
+        if (client) {
             this->flush_client_buffer();
         }
         return written_cnt;
@@ -66,13 +66,13 @@ size_t server::write() {
 }
 
 std::string server::read(size_t length) {
-    assert(this->client);
-    if (this->client->get_buffer_size() >= client::BUFFER_SIZE) {
+    assert(client);
+    if (client->get_buffer_size() >= client::BUFFER_SIZE) {
         return "";
     }
     try {
-        std::string data = this->socket.read(length);
-        this->buffer.append(data);
+        std::string data = socket.read(length);
+        buffer.append(data);
         return data;
     } catch (...) {
         return "";
@@ -80,21 +80,21 @@ std::string server::read(size_t length) {
 }
 
 void server::flush_client_buffer() {
-    assert(this->client);
-    if (this->get_buffer_size() < server::BUFFER_SIZE) {
-        this->client->flush_client_buffer();
+    assert(client);
+    if (get_buffer_size() < server::BUFFER_SIZE) {
+        client->flush_client_buffer();
     }
 }
 
 void server::flush_server_buffer() {
-    assert(this->client);
-    this->client->get_buffer().append(this->buffer);
-    this->buffer.clear();
+    assert(client);
+    client->get_buffer().append(buffer);
+    buffer.clear();
 }
 
 void server::disconnect() {
-    assert(this->client);
-    this->client->unbind();
+    assert(client);
+    client->unbind();
 }
 
 server::~server() { }

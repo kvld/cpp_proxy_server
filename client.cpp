@@ -17,38 +17,44 @@ client::~client() {
     if (server) {
         unbind();
     }
+    if (request) {
+        request.reset(nullptr);
+    }
+    if (response) {
+        response.reset(nullptr);
+    }
 }
 
 int client::get_fd() {
-    return this->socket.get_fd();
+    return socket.get_fd();
 }
 
 int client::get_server_fd() {
-    assert(this->server);
-    return this->server->get_fd();
+    assert(server);
+    return server->get_fd();
 }
 
 bool client::has_server() {
-    return this->server != nullptr;
+    return server != nullptr;
 }
 
 std::string& client::get_buffer() {
-    return this->buffer;
+    return buffer;
 }
 
 size_t client::get_buffer_size() {
-    return this->buffer.size();
+    return buffer.size();
 }
 
 std::string client::get_host() {
-    assert(this->server);
-    return this->server->get_host();
+    assert(server);
+    return server->get_host();
 }
 
 size_t client::read(size_t buffer_size) {
     try {
-        std::string reads = this->socket.read(buffer_size);
-        this->buffer.append(reads);
+        std::string reads = socket.read(buffer_size);
+        buffer.append(reads);
         return reads.length();
     } catch (...) {
         return 0;
@@ -57,10 +63,10 @@ size_t client::read(size_t buffer_size) {
 
 size_t client::write() {
     try {
-        size_t written_cnt = this->socket.write(this->buffer);
-        this->buffer.erase(0, written_cnt);
-        if (this->server) {
-            this->flush_server_buffer();
+        size_t written_cnt = socket.write(buffer);
+        buffer.erase(0, written_cnt);
+        if (server) {
+            flush_server_buffer();
         }
         return written_cnt;
     } catch (...) {
@@ -69,39 +75,39 @@ size_t client::write() {
 }
 
 void client::bind(class server *new_server) {
-    this->server.reset(new_server);
-    this->server->bind(this);
+    server.reset(new_server);
+    server->bind(this);
 }
 
 void client::unbind() {
-    this->server.reset(nullptr);
+    server.reset(nullptr);
 }
 
 void client::flush_client_buffer() {
-    assert(this->server);
-    this->server->append(this->buffer);
-    this->buffer.clear();
+    assert(server);
+    server->append(buffer);
+    buffer.clear();
 }
 
 void client::flush_server_buffer() {
-    assert(this->server);
-    if (this->get_buffer_size() < client::BUFFER_SIZE) {
-        this->server->flush_server_buffer();
+    assert(server);
+    if (get_buffer_size() < client::BUFFER_SIZE) {
+        server->flush_server_buffer();
     }
 }
 
 void client::set_response(class http_response *rsp) {
-    this->response.reset(rsp);
+    response.reset(rsp);
 }
 
 class http_response* client::get_response() {
-    return this->response.get();
+    return response.get();
 }
 
 void client::set_request(class http_request *rsp) {
-    this->request.reset(rsp);
+    request.reset(rsp);
 }
 
 class http_request* client::get_request() {
-    return this->request.get();
+    return request.get();
 }

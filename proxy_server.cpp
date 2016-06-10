@@ -71,8 +71,9 @@ void proxy_server::run() {
                 queue.execute_events();
             }
         }
-    } catch (...) {
+    } catch (std::exception& e) {
         terminate();
+        fprintf(stderr, "Exception occurred: %s\n", e.what());
     }
 }
 
@@ -121,7 +122,7 @@ void proxy_server::read_from_client(struct kevent& ev) {
     if (cur_request->is_ended()) {
         fprintf(stdout, "Request for host [%s]\n", cur_request->get_host().c_str());
         
-        class http_response* response = new class http_response();
+        http_response* response = new class http_response();
         cur_client->set_response(response);
         
         std::string cache_key = cur_request->get_host() + cur_request->get_relative_URI();
@@ -159,7 +160,7 @@ void proxy_server::resolver_callback(struct kevent& ev) {
     std::unique_ptr<http_request> cur_request = resolver.get_task();
     fprintf(stdout, "Resolver callback called for host [%s].\n", cur_request->get_host().c_str());
     
-    class server* server;
+    server* server;
     
     try {
         struct sockaddr result = std::move(cur_request->get_resolved_host());
@@ -190,7 +191,7 @@ void proxy_server::write_to_server(struct kevent& ev) {
     }
 
     fprintf(stdout, "Writing data to server, fd = %lu\n", ev.ident);
-    class server* cur_server = servers[ev.ident];
+    server* cur_server = servers[ev.ident];
     
     reset_timer(cur_server->get_client_fd());
     
@@ -218,14 +219,14 @@ void proxy_server::read_from_server(struct kevent& ev) {
     
     fprintf(stdout, "Read data from server, fd = %lu, size = %ld\n", ev.ident, ev.data);
     
-    class server* cur_server = servers[ev.ident];
+    server* cur_server = servers[ev.ident];
     
     reset_timer(cur_server->get_client_fd());
     
     std::string data = cur_server->read(ev.data);
     
-    class client* cur_client = clients[cur_server->get_client_fd()].get();
-    class http_response* cur_response = cur_client->get_response();
+    client* cur_client = clients[cur_server->get_client_fd()].get();
+    http_response* cur_response = cur_client->get_response();
     
     cur_response->append(data);
     
@@ -260,7 +261,7 @@ void proxy_server::write_to_client(struct kevent& ev) {
     
     fprintf(stdout, "Writing data to client, fd = %lu\n", ev.ident);
     
-    class client* cur_client = clients[ev.ident].get();
+    client* cur_client = clients[ev.ident].get();
     
     reset_timer(cur_client->get_fd());
     
@@ -276,27 +277,31 @@ void proxy_server::write_to_client(struct kevent& ev) {
 void proxy_server::disconnect_client(struct kevent& ev) {
     fprintf(stdout, "Disconnect client, fd = %lu\n", ev.ident);
     
-    class client* client = clients[ev.ident].get();
+    client* client = clients[ev.ident].get();
     
     if (client->has_server()) {
         fprintf(stdout, "Disconnect server, fd = %d\n", client->get_server_fd());
         
         servers.erase(client->get_server_fd());
         
-        queue.invalidate_events(client->get_server_fd());
         queue.delete_event(client->get_server_fd(), EVFILT_READ);
         queue.delete_event(client->get_server_fd(), EVFILT_WRITE);
+        queue.invalidate_events(client->get_server_fd());
     }
     queue.invalidate_events(client->get_fd());
-    queue.delete_event(client->get_fd(), EVFILT_READ);
     queue.delete_event(client->get_fd(), EVFILT_WRITE);
+    queue.delete_event(client->get_fd(), EVFILT_READ);
     queue.delete_event(client->get_fd(), EVFILT_TIMER);
     
     clients.erase(client->get_fd());
+    
+    if (clients.size() == 0) {
+        fprintf(stdout, "All clients disconnected.\n");
+    }
 }
 
 void proxy_server::disconnect_server(struct kevent& ev) {
-    class server* server = servers[ev.ident];
+    server* server = servers[ev.ident];
     
     fprintf(stdout, "Disconnect server, fd = %lu, host = [%s]\n", ev.ident, server->get_host().c_str());
     

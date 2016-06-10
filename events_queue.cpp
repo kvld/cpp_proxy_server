@@ -27,7 +27,9 @@ events_queue::events_queue() {
 events_queue::~events_queue() {}
 
 void events_queue::add_event(const struct kevent& ev) {
-    if (kevent(this->kq.get_fd(), &ev, 1, NULL, 0, NULL)) {
+    if (kevent(kq.get_fd(), &ev, 1, NULL, 0, NULL) == -1) {
+        fprintf(stderr, "Error in kevent, ident = %lu, filter = %d: ", ev.ident, ev.filter);
+        perror("");
         throw server_exception("Error in kqueue occurred!");
     }
 }
@@ -43,12 +45,12 @@ void events_queue::add_event(std::function<void (struct kevent &)> handler, uint
 #ifdef DEBUG_KQUEUE
     fprintf(stdout, "New event: ident = %d, filter = %d\n", ident, filter);
 #endif
-    this->handlers[id{ident, filter}] = handler;
+    handlers[id{ident, filter}] = handler;
     return add_event(ident, filter, flags, fflags, data, NULL);
 }
 
 int events_queue::event_occurred() {
-    return kevent(this->kq.get_fd(), NULL, 0, events, EVENTS_LIST_SIZE, NULL);
+    return kevent(kq.get_fd(), NULL, 0, events, EVENTS_LIST_SIZE, NULL);
 }
 
 void events_queue::execute_events() {
@@ -56,7 +58,7 @@ void events_queue::execute_events() {
     if ((cnt = event_occurred()) == -1) {
         perror("Error while getting events count!");
     } else {
-        this->invalid_events.clear();
+        invalid_events.clear();
 #ifdef DEBUG_KQUEUE
         std::cout << "Events: ";
         for (int i = 0; i < cnt; i++) {
@@ -69,8 +71,8 @@ void events_queue::execute_events() {
         std::cout << std::endl;
 #endif
         for (int i = 0; i < cnt; i++) {
-            if (this->invalid_events.count(this->events[i].ident) == 0) {
-                std::function<void(struct kevent&)> handler = this->handlers[id{events[i].ident, events[i].filter}];
+            if (invalid_events.count(events[i].ident) == 0) {
+                std::function<void(struct kevent&)> handler = handlers[id{events[i].ident, events[i].filter}];
                 handler(events[i]);
             }
         }
@@ -78,10 +80,10 @@ void events_queue::execute_events() {
 }
 
 void events_queue::delete_event(uintptr_t ident, int16_t filter) {
-    auto event = this->handlers.find(id{ident, filter});
-    if (event != this->handlers.end()) {
-        this->handlers.erase(event);
-        this->add_event(ident, filter, EV_DELETE, 0, 0, NULL);
+    auto event = handlers.find(id{ident, filter});
+    if (event != handlers.end()) {
+        handlers.erase(event);
+        add_event(ident, filter, EV_DELETE, 0, 0, NULL);
     }
 }
 
