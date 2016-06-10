@@ -20,7 +20,7 @@ public:
     typedef std::pair<key_t, value_t> pair;
     typedef typename std::list<pair>::iterator iterator;
     
-    lru_cache(size_t max_capacity = 4096) : capacity(max_capacity) { }
+    lru_cache(size_t max_capacity = 512) : capacity(max_capacity) { }
     
     size_t max_capacity() {
         return capacity;
