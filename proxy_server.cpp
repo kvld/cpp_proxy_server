@@ -131,7 +131,7 @@ void proxy_server::read_from_client(struct kevent& ev) {
             std::string etag = cached_response.get_header("ETag");;
             cur_request->set_header("If-None-Match", etag);
         }
-        cur_client->set_request(new http_request(cur_request->get_data()));
+        cur_client->set_request(new http_request(*cur_request.get()));
         
         
         if (cur_client->has_server()) {
@@ -141,6 +141,11 @@ void proxy_server::read_from_client(struct kevent& ev) {
                 queue.add_event([this](struct kevent& ev) { this->write_to_server(ev); }, cur_client->get_server_fd(), EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, NULL);
                 return;
             } else {
+                queue.invalidate_events(cur_client->get_server_fd());
+                queue.delete_event(cur_client->get_server_fd(), EVFILT_READ);
+                queue.delete_event(cur_client->get_server_fd(), EVFILT_WRITE);
+                servers.erase(cur_client->get_server_fd());
+                
                 cur_client->unbind();
             }
         }
