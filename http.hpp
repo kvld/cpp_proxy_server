@@ -63,6 +63,8 @@ public:
     
     std::string get_relative_URI();
     
+    bool is_validating();
+    
     int get_client_fd() {
         return client_fd;
     }
@@ -86,10 +88,16 @@ public:
     http_response();
     http_response(std::string);
     
+    bool check_cache_control();
+    bool is_cacheable();
+    
+    std::string get_status() {
+        return status;
+    }
+    
 private:
     void parse_start_line(std::string) override;
     std::string get_start_line() override;
-    
     std::string status;
 };
 

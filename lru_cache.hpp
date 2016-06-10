@@ -46,15 +46,15 @@ public:
         if (it != iterators.end()) {
             list.erase(it->second);
             iterators.erase(it);
-        } else {
-            list.push_front({key, value});
-            iterators[key] = list.begin();
+        }
+        
+        list.push_front({key, value});
+        iterators[key] = list.begin();
             
-            if (size() > capacity) {
-                auto last = list.end()--;
-                iterators.erase(last->first);
-                list.pop_back();
-            }
+        if (size() > capacity) {
+            auto last = list.back();
+            iterators.erase(last.first);
+            list.pop_back();
         }
     }
     

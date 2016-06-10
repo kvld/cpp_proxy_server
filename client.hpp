@@ -51,11 +51,14 @@ public:
     
     void set_response(class http_response* new_response);
     class http_response* get_response();
+    void set_request(class http_request* new_request);
+    class http_request* get_request();
 private:
     std::string buffer;
     class socket socket;
     std::unique_ptr<class server> server;
     std::unique_ptr<class http_response> response;
+    std::unique_ptr<class http_request> request;
 };
 
 #endif /* client_hpp */

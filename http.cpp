@@ -94,7 +94,8 @@ bool http_protocol::is_ended() {
 }
 
 std::string http_protocol::get_data() {
-    return get_start_line() + "\r\n" + get_headers() + "\r\n\r\n" + get_body();
+    std::string dd = get_start_line() + "\r\n" + get_headers() + "\r\n" + get_body();
+    return get_start_line() + "\r\n" + get_headers() + "\r\n" + get_body();
 }
 
 std::string http_protocol::get_headers() {
@@ -188,6 +189,13 @@ void http_request::set_resolved_host(sockaddr rh) {
     resolved_host = rh;
 }
 
+bool http_request::is_validating() {
+    return get_header("If-Match") != ""
+            || get_header("If-Modified-Since") != ""
+            || get_header("If-None-Match") != ""
+            || get_header("If-Range") != ""
+            || get_header("If-Unmodified-Since") != "";
+}
 
 // http_response
 http_response::http_response() : http_protocol("") { }
@@ -211,4 +219,18 @@ void http_response::parse_start_line(std::string start_line) {
     bool is_valid_protocol = protocol == "HTTP/1.0" || protocol == "HTTP/1.1";
     
     state = (!is_valid_status || !is_valid_protocol) ? BAD : START_LINE;
+}
+
+bool http_response::check_cache_control() {
+    auto hdr = get_header("Cache-Control");
+    if (hdr == "") {
+        return true;
+    }
+    return hdr.find("private") == std::string::npos
+            && hdr.find("no-cache") == std::string::npos
+            && hdr.find("no-store") == std::string::npos;
+}
+
+bool http_response::is_cacheable() {
+    return state == FULL && status == "200" && check_cache_control() && get_header("ETag") != "" && get_header("Vary") == "";
 }

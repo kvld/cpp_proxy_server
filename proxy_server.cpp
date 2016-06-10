@@ -124,6 +124,15 @@ void proxy_server::read_from_client(struct kevent& ev) {
         class http_response* response = new class http_response();
         cur_client->set_response(response);
         
+        std::string cache_key = cur_request->get_host() + cur_request->get_relative_URI();
+        if (!cur_request->is_validating() && cache.contains(cache_key)) {
+            http_response cached_response = cache.get(cache_key);
+            std::string etag = cached_response.get_header("ETag");;
+            cur_request->set_header("If-None-Match", etag);
+        }
+        cur_client->set_request(new http_request(cur_request->get_data()));
+        
+        
         if (cur_client->has_server()) {
             if (cur_client->get_host() == cur_request->get_host()) {
                 cur_client->get_buffer() = cur_request->get_data();
@@ -135,6 +144,7 @@ void proxy_server::read_from_client(struct kevent& ev) {
             }
         }
         
+        cur_client->get_buffer() = cur_request->get_data();
         cur_request->set_client_fd(static_cast<int>(ev.ident));
         resolver.add_task(std::move(cur_request));
     }
@@ -214,10 +224,28 @@ void proxy_server::read_from_server(struct kevent& ev) {
     
     std::string data = cur_server->read(ev.data);
     
-    class http_response* cur_response = clients[cur_server->get_client_fd()].get()->get_response();
+    class client* cur_client = clients[cur_server->get_client_fd()].get();
+    class http_response* cur_response = cur_client->get_response();
+    
     cur_response->append(data);
     
     if (cur_response->is_ended()) {
+        std::string cache_key = cur_client->get_request()->get_host() + cur_client->get_request()->get_relative_URI();
+        
+        // check cache hit
+        if (cur_response->get_status() == "304" && cache.contains(cache_key)) {
+            fprintf(stdout, "Cache hit for URI [%s]\n", cache_key.c_str());
+            
+            http_response cached_response = cache.get(cache_key);
+            cur_server->get_buffer() = cached_response.get_data();
+        }
+        
+        // try cache
+        if (cur_response->is_cacheable() && !cache.contains(cache_key)) {
+            cache.put(cache_key, *cur_response);
+            fprintf(stdout, "Response for URI [%s] added to cache.\n", cache_key.c_str());
+        }
+        
         cur_server->flush_server_buffer();
         
         queue.add_event([this](struct kevent& kev) { this->write_to_client(kev); }, cur_server->get_client_fd(), EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, NULL);

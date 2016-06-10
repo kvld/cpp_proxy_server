@@ -15,6 +15,8 @@
 #include "socket.hpp"
 #include "client.hpp"
 #include "DNS_resolver.hpp"
+#include "lru_cache.hpp"
+#include "http.hpp"
 
 class proxy_server {
 
@@ -50,6 +52,7 @@ private:
     class socket main_socket;
     std::map<uintptr_t, std::unique_ptr<client> > clients;
     std::map<uintptr_t, server* > servers;
+    lru_cache<std::string, http_response> cache;
     DNS_resolver resolver;
     file_descriptor pipe_fd;
 };

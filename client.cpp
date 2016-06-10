@@ -97,3 +97,11 @@ void client::set_response(class http_response *rsp) {
 class http_response* client::get_response() {
     return this->response.get();
 }
+
+void client::set_request(class http_request *rsp) {
+    this->request.reset(rsp);
+}
+
+class http_request* client::get_request() {
+    return this->request.get();
+}
