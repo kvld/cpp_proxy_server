@@ -30,13 +30,11 @@ public:
     
     void run();
     void terminate();
-    void stop();
     
     // events
     void connect_client(struct kevent&);
     void read_from_client(struct kevent&);
     void write_to_server(struct kevent&);
-    void read_header_from_server(struct kevent&);
     void write_to_client(struct kevent&);
     void read_from_server(struct kevent&);
     void disconnect_client(struct kevent&);

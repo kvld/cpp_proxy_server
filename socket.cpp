@@ -31,9 +31,10 @@ class socket socket::accept(int fd) {
     return socket(lfd);
 }
 
-size_t socket::write(std::string const& msg) {
-    size_t len;
+ssize_t socket::write(std::string const& msg) {
+    ssize_t len;
     if ((len = send(this->get_fd(), msg.c_str(), msg.size(), 0)) == -1) {
+        // Bad design cause we don't know about type of error
         throw server_exception("Error while writing!");
     }
     
@@ -42,7 +43,7 @@ size_t socket::write(std::string const& msg) {
 
 std::string socket::read(size_t buffer_size) {
     std::vector<char> buffer(buffer_size);
-    size_t len;
+    ssize_t len;
     
     if ((len = recv(this->get_fd(), buffer.data(), buffer_size, 0)) == -1) {
         throw server_exception("Error while reading!");

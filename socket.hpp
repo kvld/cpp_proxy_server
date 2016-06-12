@@ -26,7 +26,7 @@ public:
     
     ~socket();
     
-    size_t write(std::string const& msg);
+    ssize_t write(std::string const& msg);
     std::string read(size_t buffer_size);
     
     static socket accept(int fd);

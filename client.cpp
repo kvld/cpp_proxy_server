@@ -11,7 +11,9 @@
 #include "exceptions.hpp"
 #include <cassert>
 
-client::client(int fd) : socket(socket::accept(fd)), server(nullptr) { };
+client::client(int fd) : socket(socket::accept(fd)), server(nullptr) {
+    socket.make_nonblocking();
+};
 
 client::~client() {
     if (server) {
@@ -61,6 +63,7 @@ size_t client::read(size_t buffer_size) {
     }
 }
 
+// We will never know what happened in socket::write() and we always return 0 as result
 size_t client::write() {
     try {
         size_t written_cnt = socket.write(buffer);

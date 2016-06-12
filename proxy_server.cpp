@@ -33,8 +33,8 @@ proxy_server::proxy_server(int port) :
     int fd[2];
     pipe(fd);
     
-    pipe_fd = std::move(file_descriptor(fd[0]));
-    file_descriptor resolver_fd = std::move(file_descriptor(fd[1]));
+    pipe_fd = file_descriptor(fd[0]);
+    file_descriptor resolver_fd(fd[1]);
     
     pipe_fd.make_nonblocking();
     resolver_fd.make_nonblocking();
@@ -42,7 +42,7 @@ proxy_server::proxy_server(int port) :
     resolver.set_fd(std::move(resolver_fd));
     
     // signals
-    queue.add_event([this](struct kevent& ev){ this->stop(); }, SIGINT, EVFILT_SIGNAL, EV_ADD, 0, NULL);
+    queue.add_event([this](struct kevent& ev){ this->terminate(); }, SIGINT, EVFILT_SIGNAL, EV_ADD, 0, NULL);
     queue.add_event([this](struct kevent& ev){ this->terminate(); }, SIGTERM, EVFILT_SIGNAL, EV_ADD, 0, NULL);
     signal(SIGINT, SIG_IGN);
     signal(SIGTERM, SIG_IGN);
@@ -77,27 +77,21 @@ void proxy_server::run() {
     }
 }
 
-void proxy_server::stop() {
-    fprintf(stdout, "Stopping server...\n");
-    queue.invalidate_events(main_socket.get_fd());
-    queue.delete_event(main_socket.get_fd(), EVFILT_READ);
-    working = false;
-}
-
 void proxy_server::terminate() {
-    fprintf(stdout, "Server terminated.\n");
+    fprintf(stdout, "Terminating server...\n");
     resolver.stop();
     working = false;
 }
 
 // Events
 void proxy_server::connect_client(struct kevent& ev) {
-    client* new_client = new client(main_socket.get_fd());
-    clients[new_client->get_fd()] = std::move(std::unique_ptr<client>(new_client));
-    fprintf(stdout, "New client accepted, fd = %d\n", new_client->get_fd());
+    std::unique_ptr<client> new_client(new client(main_socket.get_fd()));
+    client* raw_client = new_client.get();
+    clients[new_client->get_fd()] = std::move(new_client);
+    fprintf(stdout, "New client accepted, fd = %d\n", raw_client->get_fd());
 
-    queue.add_event([this](struct kevent& ev) { this->read_from_client(ev); }, new_client->get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
-    queue.add_event([this](struct kevent& ev) { this->disconnect_client(ev); }, new_client->get_fd(), EVFILT_TIMER, EV_ADD, NOTE_SECONDS, CLIENT_TIMEOUT);
+    queue.add_event([this](struct kevent& ev) { this->read_from_client(ev); }, raw_client->get_fd(), EVFILT_READ, EV_ADD, 0, NULL);
+    queue.add_event([this](struct kevent& ev) { this->disconnect_client(ev); }, raw_client->get_fd(), EVFILT_TIMER, EV_ADD, NOTE_SECONDS, CLIENT_TIMEOUT);
 }
 
 void proxy_server::read_from_client(struct kevent& ev) {
@@ -165,16 +159,20 @@ void proxy_server::resolver_callback(struct kevent& ev) {
     std::unique_ptr<http_request> cur_request = resolver.get_task();
     fprintf(stdout, "Resolver callback called for host [%s].\n", cur_request->get_host().c_str());
     
+    client* cur_client = clients[cur_request->get_client_fd()].get();
+    
+    if (cur_client == nullptr) {
+        return;
+    }
+    
     server* server;
     
     try {
-        struct sockaddr result = std::move(cur_request->get_resolved_host());
+        struct sockaddr result = cur_request->get_resolved_host();
         server = new class server(result);
     } catch (...) {
         throw server_exception("Error while connecting to server!");
     }
-    
-    client* cur_client = clients[cur_request->get_client_fd()].get();
     
     reset_timer(cur_client->get_fd());
     
@@ -237,7 +235,6 @@ void proxy_server::read_from_server(struct kevent& ev) {
     
     if (cur_response->is_ended()) {
         std::string cache_key = cur_client->get_request()->get_host() + cur_client->get_request()->get_relative_URI();
-        
         // check cache hit
         if (cur_response->get_status() == "304" && cache.contains(cache_key)) {
             fprintf(stdout, "Cache hit for URI [%s]\n", cache_key.c_str());
